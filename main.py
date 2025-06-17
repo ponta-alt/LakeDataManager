@@ -13,7 +13,8 @@ from requests import adapters
 from shapely.geometry.linestring import LineString
 import re
 import pykakasi
-
+from shapely.ops import linemerge, polygonize, unary_union
+from shapely.geometry import Polygon
 
 def main():
     url = 'https://www.gsi.go.jp/kankyochiri/lakedatalist.html'
@@ -100,21 +101,37 @@ class LakeDataManager:
         print(f'{datetime.now().replace(microsecond=0)} GeoJson 出力中')
         unzip_folder_path = Path(self.unzip_folder_relative_path).resolve()
         shp_folder_path_list = [d for d in unzip_folder_path.iterdir() if d.is_dir()]
-        geojson_line_string_folder_path = os.path.join(self.geojson_folder_relative_path, 'line_string')
+        geojson_line_string_folder_path = os.path.join(self.geojson_folder_relative_path, 'multi_line_string')
+        geojson_polygon_folder_path = os.path.join(self.geojson_folder_relative_path, 'polygon')
         os.makedirs(geojson_line_string_folder_path, exist_ok=True)
+        os.makedirs(geojson_polygon_folder_path, exist_ok=True)
         for shp_folder_path in shp_folder_path_list:
             shp_file_path_list = [f for f in Path(shp_folder_path).rglob('*') if f.suffix == '.shp']
             for shp_file_path in shp_file_path_list:
                 gdf_multi_line_string = self._make_line_string(shp_file_path)
+                polygons = [
+                    Polygon(geom)
+                    for geom in gdf_multi_line_string.geometry[0].geoms
+                    if isinstance(geom, LineString)
+                       and len(geom.coords) >= 4
+                       and geom.coords[0] == geom.coords[-1]
+                ]
+                gdf_polygon = gpd.GeoDataFrame(geometry=polygons, crs=gdf_multi_line_string.crs)
                 name = os.path.basename(shp_folder_path)
                 geojson_line_string_file_path = os.path.join(geojson_line_string_folder_path, name+'.geojson')
+                geojson_polygon_file_path = os.path.join(geojson_polygon_folder_path, name+'.geojson')
                 if len(shp_file_path_list) != 1:
-                    geojson_line_string_file_path = os.path.splitext(geojson_line_string_file_path)[0]
-                    os.makedirs(geojson_line_string_file_path, exist_ok=True)
                     file_name = os.path.splitext(shp_file_path)[0]
+                    geojson_line_string_file_path = os.path.splitext(geojson_line_string_file_path)[0]
+                    geojson_polygon_file_path = os.path.splitext(geojson_polygon_folder_path)[0]
+                    os.makedirs(geojson_line_string_file_path, exist_ok=True)
+                    os.makedirs(geojson_polygon_file_path, exist_ok=True)
                     geojson_line_string_file_path += '/' + os.path.basename(file_name) + '.geojson'
+                    geojson_polygon_file_path += '/' + os.path.basename(file_name) + '.geojson'
 
                 gdf_multi_line_string.to_file(Path(geojson_line_string_file_path), driver='GeoJSON')
+                gdf_polygon.to_file(Path(geojson_polygon_file_path), driver='GeoJSON')
+
         print(f'{datetime.now().replace(microsecond=0)} GeoJson 出力完了')
 
     @staticmethod
