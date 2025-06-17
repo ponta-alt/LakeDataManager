@@ -105,50 +105,7 @@ class LakeDataManager:
         for shp_folder_path in shp_folder_path_list:
             shp_file_path_list = [f for f in Path(shp_folder_path).rglob('*') if f.suffix == '.shp']
             for shp_file_path in shp_file_path_list:
-                gdf = gpd.read_file(shp_file_path)
-                gdf.to_crs(epsg=4326, inplace=True)
-                self_contained_coordinates = []
-                not_self_contained_coordinates = []
-                for feature in gdf.geometry:
-                    start_point = feature.coords[0]
-                    end_point = feature.coords[-1]
-                    distance = LineString([start_point, end_point]).length
-                    coords = [list(coord) for coord in feature.coords]
-                    if len(feature.coords) < 4:
-                        continue
-                    if distance < 0.0003:
-                        self_contained_coordinates.append(coords)
-                    else:
-                        not_self_contained_coordinates.append(coords)
-
-                result_coordinates = self_contained_coordinates
-                unified_coordinates = []
-                if not_self_contained_coordinates:
-                    unified_coordinates.append(not_self_contained_coordinates.pop(0))
-                    while len(not_self_contained_coordinates) != 0:
-                        min_dist_squared = float('inf')
-                        next_coords_index = int
-                        start_or_end_point = int
-                        for i, coords in enumerate(not_self_contained_coordinates):
-                            point = [coords[0], coords[-1]]
-                            for k, p in enumerate(point):
-                                dist_squared = (unified_coordinates[-1][-1][0] - p[0])**2 + (unified_coordinates[-1][-1][1] - p[1])**2
-                                if dist_squared < min_dist_squared:
-                                    min_dist_squared = dist_squared
-                                    next_coords_index = i
-                                    start_or_end_point = k
-                        next_coords = not_self_contained_coordinates.pop(next_coords_index)
-                        if start_or_end_point == 1:
-                            next_coords.reverse()
-                        unified_coordinates.append(next_coords)
-                    unified_coordinates[-1].append(unified_coordinates[0][0])
-                    result_coordinates = [list(itertools.chain.from_iterable(unified_coordinates))]
-                    for self_contained_coord in self_contained_coordinates:
-                        result_coordinates.append(self_contained_coord)
-                feature_multi_line_string = [{'type': 'Feature', 'properties': {'ID': 1},
-                                              'geometry': {'type': 'MultiLineString', 'coordinates': result_coordinates}}]
-                gdf_multi_line_string = gpd.GeoDataFrame.from_features(features=feature_multi_line_string)
-                gdf_multi_line_string.set_crs(epsg=4326, inplace=True)
+                gdf_multi_line_string = self._make_line_string(shp_file_path)
                 name = os.path.basename(shp_folder_path)
                 geojson_line_string_file_path = os.path.join(geojson_line_string_folder_path, name+'.geojson')
                 if len(shp_file_path_list) != 1:
@@ -159,6 +116,55 @@ class LakeDataManager:
 
                 gdf_multi_line_string.to_file(Path(geojson_line_string_file_path), driver='GeoJSON')
         print(f'{datetime.now().replace(microsecond=0)} GeoJson 出力完了')
+
+    @staticmethod
+    def _make_line_string(shp_file_path):
+        gdf = gpd.read_file(shp_file_path)
+        gdf.to_crs(epsg=4326, inplace=True)
+        self_contained_coordinates = []
+        not_self_contained_coordinates = []
+        for feature in gdf.geometry:
+            start_point = feature.coords[0]
+            end_point = feature.coords[-1]
+            distance = LineString([start_point, end_point]).length
+            coords = [list(coord) for coord in feature.coords]
+            if len(feature.coords) < 4:
+                continue
+            if distance < 0.0003:
+                self_contained_coordinates.append(coords)
+            else:
+                not_self_contained_coordinates.append(coords)
+
+        result_coordinates = self_contained_coordinates
+        unified_coordinates = []
+        if not_self_contained_coordinates:
+            unified_coordinates.append(not_self_contained_coordinates.pop(0))
+            while len(not_self_contained_coordinates) != 0:
+                min_dist_squared = float('inf')
+                next_coords_index = int
+                start_or_end_point = int
+                for i, coords in enumerate(not_self_contained_coordinates):
+                    point = [coords[0], coords[-1]]
+                    for k, p in enumerate(point):
+                        dist_squared = (unified_coordinates[-1][-1][0] - p[0]) ** 2 + (
+                                unified_coordinates[-1][-1][1] - p[1]) ** 2
+                        if dist_squared < min_dist_squared:
+                            min_dist_squared = dist_squared
+                            next_coords_index = i
+                            start_or_end_point = k
+                next_coords = not_self_contained_coordinates.pop(next_coords_index)
+                if start_or_end_point == 1:
+                    next_coords.reverse()
+                unified_coordinates.append(next_coords)
+            unified_coordinates[-1].append(unified_coordinates[0][0])
+            result_coordinates = [list(itertools.chain.from_iterable(unified_coordinates))]
+            for self_contained_coord in self_contained_coordinates:
+                result_coordinates.append(self_contained_coord)
+        feature_multi_line_string = [{'type': 'Feature', 'properties': {'ID': 1},
+                                      'geometry': {'type': 'MultiLineString', 'coordinates': result_coordinates}}]
+        gdf_multi_line_string = gpd.GeoDataFrame.from_features(features=feature_multi_line_string)
+        gdf_multi_line_string.set_crs(epsg=4326, inplace=True)
+        return gdf_multi_line_string
 
 
 class CustomHttpAdapter (adapters.HTTPAdapter):  # 古い再ネゴシエーションエラーを消すため
