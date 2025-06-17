@@ -17,12 +17,14 @@ import pykakasi
 
 def main():
     url = 'https://www.gsi.go.jp/kankyochiri/lakedatalist.html'
-    zip_folder_relative_path = os.path.join('湖沼データ', 'zip')
-    unzip_folder_relative_path = os.path.join('湖沼データ', 'shp')
-    geojson_folder_relative_path = os.path.join('湖沼データ', 'geojson')
+
+    parent_folder_name = 'lake-data'
+    zip_folder_relative_path = os.path.join(parent_folder_name, 'zip')
+    unzip_folder_relative_path = os.path.join(parent_folder_name, 'shp')
+    geojson_folder_relative_path = os.path.join(parent_folder_name, 'geojson')
+
     ldm = LakeDataManager(url, zip_folder_relative_path, unzip_folder_relative_path, geojson_folder_relative_path)
-    lake_data_list = ldm.fetch_lake_data_list()
-    lake_data_list_to_download = lake_data_list[0:3]
+    lake_data_list_to_download = ldm.fetch_lake_data_list()[0:3]
     ldm.download_zip(lake_data_list_to_download)
     ldm.unzip_shp()
     ldm.shp_to_geojson()
@@ -99,9 +101,7 @@ class LakeDataManager:
         unzip_folder_path = Path(self.unzip_folder_relative_path).resolve()
         shp_folder_path_list = [d for d in unzip_folder_path.iterdir() if d.is_dir()]
         geojson_line_string_folder_path = os.path.join(self.geojson_folder_relative_path, 'line_string')
-        geojson_polygon_folder_path = os.path.join(self.geojson_folder_relative_path, 'polygon')
         os.makedirs(geojson_line_string_folder_path, exist_ok=True)
-        os.makedirs(geojson_polygon_folder_path, exist_ok=True)
         for shp_folder_path in shp_folder_path_list:
             shp_file_path_list = [f for f in Path(shp_folder_path).rglob('*') if f.suffix == '.shp']
             for shp_file_path in shp_file_path_list:
